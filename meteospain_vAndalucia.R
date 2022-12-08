@@ -123,8 +123,30 @@ setwd("/home/merel/Documents/I-CISK/uncertainty/meteo_data_spain/Meteo_data_Spai
 andalucia <- st_read("13_23_DemarcacionCEPS.shp") 
 
 # check the projection
-st_crs(andalucia) # so its ETRS89, need to convert to WGS84
+st_crs(andalucia) # so its ETRS89, need to convert to WGS84 to match the weather stations crs
 andalucia <- st_transform(andalucia, crs = st_crs(meteo_ria)) # take the crs from meteo ria to transform the data into
+
+# function to translate coordinates from arc min/sec to decimals
+DMS2decimal = function(geometry) {
+  g = st_coordinates(geometry)
+  print(g)
+  lon = paste0(as.character(g[1]), "00")
+  lat = paste0(as.character(g[2]), "00")
+  lon_deg = as.numeric(substring(lon, 1,2))
+  lon_min = as.numeric(substring(lon, 4,5))
+  lon_sec = as.numeric(substring(lon, 6,7))
+  lat_deg = as.numeric(substring(lat, 1,2))
+  lat_min = as.numeric(substring(lat, 4,5))
+  lat_sec = as.numeric(substring(lat, 6,7))
+  p_lon = lon_deg - lon_min/60 - lon_sec/3600
+  p_lat = lat_deg + lat_min/60 + lat_sec/3600
+  return(st_sfc(st_point(c(p_lon, p_lat)), crs = 4326))
+}
+
+# now translate meteo ria geomtries to decimals in stead of arc seconds
+for(i in c(1:length(meteo_ria$geometry))){
+  meteo_ria$geometry[i] <- DMS2decimal(meteo_ria$geometry[i])
+}
 
 # have a look at the shape
 ggplot() + geom_sf(data = andalucia$geometry) + geom_sf(data = meteo_ria$geometry)
