@@ -119,7 +119,7 @@ view(tempBivKey)
 attach_key(tempBivMap, tempBivKey)
 
 # read in spain-andalucia shapefile
-setwd("/home/merel/Documents/I-CISK/meteo/data/shape/Andalucia_regions/")
+setwd("/home/merel/Documents/I-CISK/uncertainty/meteo_data_spain/Meteo_data_Spain_Andalucia/Andalucia_regions/")
 andalucia <- st_read("13_23_DemarcacionCEPS.shp") 
 
 # check the projection
