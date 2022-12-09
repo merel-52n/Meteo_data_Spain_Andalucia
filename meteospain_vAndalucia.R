@@ -143,8 +143,8 @@ DMS2decimal = function(geometry) {
   return(st_sfc(st_point(c(p_lon, p_lat)), crs = 4326))
 }
 
-# now translate meteo ria geomtries to decimals in stead of arc seconds
-for(i in c(1:length(meteo_ria$geometry))){
+# now translate meteo ria geometries to decimals in stead of arc seconds
+for(i in 1:length(meteo_ria$geometry)){
   meteo_ria$geometry[i] <- DMS2decimal(meteo_ria$geometry[i])
 }
 
