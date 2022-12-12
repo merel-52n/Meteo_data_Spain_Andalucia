@@ -135,11 +135,11 @@ geodata <- st_buffer(geodata, dist = 3000)
 geodata <- as_Spatial(geodata)
 
 # create map using the biv color palette and the poverty df
-tempBivMap <- build_bmap(data = temperature, geoData = geodata, id = "station_name")
+tempBivMap <- build_bmap(data = temperature, geoData = geodata, id = "station_name", palette = "CyanMagenta")
 map <- view(tempBivMap) + geom_sf(data = andalucia$geometry, color=alpha("black", 0.7), fill = NA) + ggtitle("Meteorological stations in Andalucia, Spain")
 
 # create legend
-tempBivKey <- build_bkey(data = temperature)
+tempBivKey <- build_bkey(data = temperature, palette = "CyanMagenta")
 legend <- view(tempBivKey)
 
 # plot map with legend, plot_grid is from cowplot library to plot things next to each other
