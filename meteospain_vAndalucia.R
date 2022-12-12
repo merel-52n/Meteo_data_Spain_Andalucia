@@ -40,10 +40,10 @@ for (name in colnames(stations) ) { # iterate over each station
       vals <- c(vals, meteo_ria$mean_temperature[i])
       }
     }
-  # if there are less than 31 observations, add NA values to the df to get 31 rows (needs 31 rows to add it to the df)
-  if (length(vals) < 31) {
+  # if there are less than 31 (num of observations per station) observations, add NA values to the df to get 31 rows (needs 31 rows to add it to the df)
+  if (length(vals) < round(num_perstation)) {
     print(paste0("The following station did not include all observations:", name))
-    m <- 31 - length(vals) # this is the amount of missing values
+    m <- round(num_perstation) - length(vals) # this is the amount of missing values
     while (m > 0) {
       vals <- c(vals, NA)
       m = m-1
@@ -109,18 +109,17 @@ geodata <- as_Spatial(geodata)
 
 # create map using the biv color palette and the poverty df
 tempBivMap <- build_bmap(data = temperature, geoData = geodata, id = "station_name")
-view(tempBivMap)
+view(tempBivMap) + geom_sf(data = andalucia$geometry, color=alpha("black", 0.7), fill = NA)
 
 # create key
 tempBivKey <- build_bkey(data = temperature)
 view(tempBivKey)
 
 # now plot them together
-attach_key(tempBivMap, tempBivKey)
+attach_key(tempBivMap, tempBivKey) 
 
 # read in spain-andalucia shapefile
-setwd("/home/merel/Documents/I-CISK/uncertainty/meteo_data_spain/Meteo_data_Spain_Andalucia/Andalucia_regions/")
-andalucia <- st_read("13_23_DemarcacionCEPS.shp") 
+andalucia <- st_read("/home/merel/Documents/I-CISK/uncertainty/Meteo_data_Spain_Andalucia/Andalucia_regions/13_23_DemarcacionCEPS.shp") 
 
 # check the projection
 st_crs(andalucia) # so its ETRS89, need to convert to WGS84 to match the weather stations crs
@@ -148,6 +147,9 @@ for(i in 1:length(meteo_ria$geometry)){
   meteo_ria$geometry[i] <- DMS2decimal(meteo_ria$geometry[i])
 }
 
-# have a look at the shape
-ggplot() + geom_sf(data = andalucia$geometry) + geom_sf(data = meteo_ria$geometry)
-ggplot() + geom_sf(data = meteo_ria$geometry)
+# have a look at the stations in context of Andalucia
+ggplot() + geom_sf(data = andalucia$geometry) + geom_sf(data = meteo_ria$geometry) + ggtitle("Meteorological stations in Andalucia, Spain")
+
+View(st_contains(unique(st_as_sf(meteo_ria$geometry)), st_as_sf(andalucia$geometry)))
+
+a <- aggregate(meteo_ria$mean_temperature, by = andalucia, FUN = mean)
