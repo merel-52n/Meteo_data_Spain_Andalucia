@@ -5,6 +5,23 @@ library(ggplot2)
 library(sf)
 library(dplyr)
 
+# function to translate coordinates from arc min/sec to decimals
+DMS2decimal = function(geometry) {
+  g = st_coordinates(geometry)
+  print(g)
+  lon = paste0(as.character(g[1]), "00")
+  lat = paste0(as.character(g[2]), "00")
+  lon_deg = as.numeric(substring(lon, 1,2))
+  lon_min = as.numeric(substring(lon, 4,5))
+  lon_sec = as.numeric(substring(lon, 6,7))
+  lat_deg = as.numeric(substring(lat, 1,2))
+  lat_min = as.numeric(substring(lat, 4,5))
+  lat_sec = as.numeric(substring(lat, 6,7))
+  p_lon = lon_deg - lon_min/60 - lon_sec/3600
+  p_lat = lat_deg + lat_min/60 + lat_sec/3600
+  return(st_sfc(st_point(c(p_lon, p_lat)), crs = 4326))
+}
+
 # retrieve meteo data from april-may 2022
 ria_options <- ria_options(resolution = 'daily', start_date = as.Date('2022-04-14'), end_date = as.Date('2022-05-14'))
 meteo_ria <- get_meteo_from('ria', ria_options)
@@ -86,20 +103,30 @@ info <- info %>% distinct(station_name, .keep_all = TRUE) # get rid of duplicate
 
 alldata <- left_join(temp_spain, info, by = "station_name") # add the geometry info as a new column to the temp data, matching station names with geometry
 
+for(i in 1:length(alldata$geometry)){
+  alldata$geometry[i] <- DMS2decimal(alldata$geometry[i])
+}
+
 ### now plotting
 
 library(Vizumap)
 library(sf)
+library(cowplot)
 
 # use one of four pre-prepared colour palettes
-cmBivPal <- build_palette(name = "CyanMagenta")
+cmBivPal <- build_palette(name = "GreenBlue")
 view(cmBivPal)
 
 # below, read.uv creates a df that is usable to build a map with the function after
 temperature <- read.uv(data = alldata, estimate = "mean_temp", error = "temp_moe")
 
 # convert geo info to sf object
-geodata <- st_as_sf(info <- get_stations_info_from('ria', ria_options))
+geodata <- st_as_sf(get_stations_info_from('ria', ria_options))
+
+# convert coordinates into decimals
+for(i in 1:length(geodata$geometry)){
+  geodata$geometry[i] <- DMS2decimal(geodata$geometry[i])
+}
 
 # create buffer around the points so they can be used as spatial polygons
 geodata <- st_buffer(geodata, dist = 3000)
@@ -109,14 +136,14 @@ geodata <- as_Spatial(geodata)
 
 # create map using the biv color palette and the poverty df
 tempBivMap <- build_bmap(data = temperature, geoData = geodata, id = "station_name")
-view(tempBivMap) + geom_sf(data = andalucia$geometry, color=alpha("black", 0.7), fill = NA)
+map <- view(tempBivMap) + geom_sf(data = andalucia$geometry, color=alpha("black", 0.7), fill = NA) + ggtitle("Meteorological stations in Andalucia, Spain")
 
-# create key
+# create legend
 tempBivKey <- build_bkey(data = temperature)
-view(tempBivKey)
+legend <- view(tempBivKey)
 
-# now plot them together
-attach_key(tempBivMap, tempBivKey) 
+# plot map with legend, plot_grid is from cowplot library to plot things next to each other
+plot_grid(map, legend, labels = NULL, scale = c(1, 0.5)) 
 
 # read in spain-andalucia shapefile
 andalucia <- st_read("/home/merel/Documents/I-CISK/uncertainty/Meteo_data_Spain_Andalucia/Andalucia_regions/13_23_DemarcacionCEPS.shp") 
@@ -125,25 +152,9 @@ andalucia <- st_read("/home/merel/Documents/I-CISK/uncertainty/Meteo_data_Spain_
 st_crs(andalucia) # so its ETRS89, need to convert to WGS84 to match the weather stations crs
 andalucia <- st_transform(andalucia, crs = st_crs(meteo_ria)) # take the crs from meteo ria to transform the data into
 
-# function to translate coordinates from arc min/sec to decimals
-DMS2decimal = function(geometry) {
-  g = st_coordinates(geometry)
-  print(g)
-  lon = paste0(as.character(g[1]), "00")
-  lat = paste0(as.character(g[2]), "00")
-  lon_deg = as.numeric(substring(lon, 1,2))
-  lon_min = as.numeric(substring(lon, 4,5))
-  lon_sec = as.numeric(substring(lon, 6,7))
-  lat_deg = as.numeric(substring(lat, 1,2))
-  lat_min = as.numeric(substring(lat, 4,5))
-  lat_sec = as.numeric(substring(lat, 6,7))
-  p_lon = lon_deg - lon_min/60 - lon_sec/3600
-  p_lat = lat_deg + lat_min/60 + lat_sec/3600
-  return(st_sfc(st_point(c(p_lon, p_lat)), crs = 4326))
-}
 
 # now translate meteo ria geometries to decimals in stead of arc seconds
-for(i in 1:length(meteo_ria$geometry)){
+for(i in 1:length(meteo_ria$geometry)){+
   meteo_ria$geometry[i] <- DMS2decimal(meteo_ria$geometry[i])
 }
 
