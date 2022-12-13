@@ -1,11 +1,9 @@
-## this script gets data from meteospain https://emf.creaf.cat/news/meteospain_available/ 
+# This script gets meteorological data from the Andalucia region with package meteospain: https://emf.creaf.cat/news/meteospain_available/ 
+# The data is subsequently plotted along with uncertainty measures using package Vizumap. 
 
-library(meteospain)
-library(ggplot2)
-library(sf)
-library(dplyr)
+### functions section ----------------------------------
 
-# function to translate coordinates from arc min/sec to decimals
+# function to translate coordinates from arc min/sec to decimals (meteo ria provides geometries of stations using arcseconds in stead of normal decimals)
 DMS2decimal = function(geometry) {
   g = st_coordinates(geometry)
   print(g)
@@ -22,14 +20,32 @@ DMS2decimal = function(geometry) {
   return(st_sfc(st_point(c(p_lon, p_lat)), crs = 4326))
 }
 
-# retrieve meteo data from april-may 2022
+### data retrieval and wrangling section ----------------------------------
+
+library(meteospain)
+library(sf)
+library(dplyr)
+
+# retrieve meteo data for Andalucia from april-may 2022
 ria_options <- ria_options(resolution = 'daily', start_date = as.Date('2022-04-14'), end_date = as.Date('2022-05-14'))
 meteo_ria <- get_meteo_from('ria', ria_options)
+
+# now translate meteo ria geometries to decimals instead of arc seconds
+for(i in 1:length(meteo_ria$geometry)){
+    meteo_ria$geometry[i] <- DMS2decimal(meteo_ria$geometry[i])
+}
 
 #check which crs is used
 st_crs(meteo_ria)
 
-# check unique number of stations
+# read in spain-andalucia shapefile
+andalucia <- st_read("/home/merel/Documents/I-CISK/uncertainty/Meteo_data_Spain_Andalucia/Andalucia_regions/13_23_DemarcacionCEPS.shp") 
+
+# check the projection
+st_crs(andalucia) # so its ETRS89, need to convert to WGS84 to match the weather stations crs
+andalucia <- st_transform(andalucia, crs = st_crs(meteo_ria)) # take the crs from meteo ria to transform the data into
+
+# check unique number of stations in data retrieved from meteospain
 num_stations <- length(unique(meteo_ria$station_id)) # 101
 
 # check unique number of geometries
@@ -39,39 +55,41 @@ length(unique(meteo_ria$geometry)) # matches 101
 num_obs <- length(meteo_ria$timestamp)
 
 # calculate number of measurements per station
-num_perstation <- num_obs / num_stations # value of num_perstation is 31, so there are 31 measurements per station, so 1 every day of the month
+num_perstation <- num_obs / num_stations # 1 measurement for each station per day
 
 # check which columns contain NA values
 colSums(is.na(meteo_ria))
 
-# now we want to calculate margin of error for each station, first create new df 
-stations <- data.frame(matrix(ncol = num_stations, nrow = round(num_perstation))) # use 31 rows because 31 days, and no. of columns is the amount of unique stations
+# now we want to calculate margin of error for each station -- create new df for this first
+stations <- data.frame(matrix(ncol = num_stations, nrow = round(num_perstation))) # use 31 rows because 31 days of observations, and no. of columns is the amount of unique stations
 names <- unique(meteo_ria$station_name) # get the unique names of the stations
 colnames(stations) <- names # name the columns after the stations
 
-# now per station, collect the mean temperature values
+# now per station, collect the mean temperature values and add them to the df created above
 for (name in colnames(stations) ) { # iterate over each station
   vals <- c()
   for (i in 1:length(meteo_ria$timestamp)) {
     if (meteo_ria$station_name[i] == name) {
-      vals <- c(vals, meteo_ria$mean_temperature[i])
+      vals <- c(vals, meteo_ria$mean_temperature[i]) # add mean temperature values to vector
       }
     }
-  # if there are less than 31 (num of observations per station) observations, add NA values to the df to get 31 rows (needs 31 rows to add it to the df)
+  # if there are less than 31 (num of observations per station) observations collected, add NA values to the df to get 31 rows (so dims match)
   if (length(vals) < round(num_perstation)) {
-    print(paste0("The following station did not include all observations:", name))
     m <- round(num_perstation) - length(vals) # this is the amount of missing values
+    print(paste0("The station", name, "missed", m, "observations"))
     while (m > 0) {
       vals <- c(vals, NA)
       m = m-1
       }
     }
-  stations[name] <- vals # add collected values to the corresponding column in the df
+  stations[name] <- vals # save collected temperature values to the corresponding column in the df
 }
 
-stations$timestamp <- unique(meteo_ria$timestamp) # get the 31 timestamps used
-stations <- relocate(stations, timestamp) # move stations to the start of the df
+# add timestamp to the df
+stations$timestamp <- unique(meteo_ria$timestamp)
+stations <- relocate(stations, timestamp) # move timestamp to the 1st column of the df
 
+# inspect values
 summary(stations)
 colSums(is.na(stations))
 
@@ -79,7 +97,7 @@ colSums(is.na(stations))
 n <- length(stations$timestamp) # this is the number of observations
 crit_val <- qt(0.975, df=n-1) # get quantile of t distrib, with n-1 degrees of freedom
 
-temp_spain <- data.frame(matrix(ncol = 3, nrow = 0)) # new df with columns for name, geom, temp, margin of error, and each row is a station
+temp_spain <- data.frame(matrix(ncol = 3, nrow = 0)) # new df with columns for name, geom, temp, margin of error -- each row represents one weather station
 
 for (name in names) {
   # calculate mean temperature per station from the 31 observations
@@ -107,13 +125,15 @@ for(i in 1:length(alldata$geometry)){
   alldata$geometry[i] <- DMS2decimal(alldata$geometry[i])
 }
 
-### now plotting
-
+### plotting section ----------------------------------
+library(ggplot2)
 library(Vizumap)
-library(sf)
 library(cowplot)
 
-# use one of four pre-prepared colour palettes
+# plot the stations with Andalucia
+ggplot() + geom_sf(data = andalucia$geometry) + geom_sf(data = meteo_ria$geometry) + ggtitle("Meteorological stations in Andalucia, Spain")
+
+# use one of four pre-prepared colour palettes for the uncertainty plotting
 cmBivPal <- build_palette(name = "GreenBlue")
 view(cmBivPal)
 
@@ -145,22 +165,7 @@ legend <- view(tempBivKey)
 # plot map with legend, plot_grid is from cowplot library to plot things next to each other
 plot_grid(map, legend, labels = NULL, scale = c(1, 0.5)) 
 
-# read in spain-andalucia shapefile
-andalucia <- st_read("/home/merel/Documents/I-CISK/uncertainty/Meteo_data_Spain_Andalucia/Andalucia_regions/13_23_DemarcacionCEPS.shp") 
-
-# check the projection
-st_crs(andalucia) # so its ETRS89, need to convert to WGS84 to match the weather stations crs
-andalucia <- st_transform(andalucia, crs = st_crs(meteo_ria)) # take the crs from meteo ria to transform the data into
-
-
-# now translate meteo ria geometries to decimals in stead of arc seconds
-for(i in 1:length(meteo_ria$geometry)){+
-  meteo_ria$geometry[i] <- DMS2decimal(meteo_ria$geometry[i])
-}
-
-# have a look at the stations in context of Andalucia
-ggplot() + geom_sf(data = andalucia$geometry) + geom_sf(data = meteo_ria$geometry) + ggtitle("Meteorological stations in Andalucia, Spain")
-
+# intersecting the polygons with the stations
 View(st_contains(unique(st_as_sf(meteo_ria$geometry)), st_as_sf(andalucia$geometry)))
 
 a <- aggregate(meteo_ria$mean_temperature, by = andalucia, FUN = mean)
