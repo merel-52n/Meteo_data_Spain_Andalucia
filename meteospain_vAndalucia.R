@@ -27,7 +27,7 @@ library(sf)
 library(dplyr)
 
 # retrieve meteo data for Andalucia from april-may 2022
-ria_options <- ria_options(resolution = 'daily', start_date = as.Date('2022-04-14'), end_date = as.Date('2022-05-14'))
+ria_options <- ria_options(resolution = 'daily', start_date = as.Date('2022-04-01'), end_date = as.Date('2022-05-01'))
 meteo_ria <- get_meteo_from('ria', ria_options)
 
 # now translate meteo ria geometries to decimals instead of arc seconds
@@ -107,6 +107,8 @@ for (name in names) {
   std_dev <- sd((unlist(stations[name])))/sqrt(n) 
   temp_moe <- std_dev * crit_val 
   
+  # calculate no. of st devs difference from the mean
+  
   # save calculations
   results <- c(name, mean_temperature, temp_moe)
   temp_spain <- rbind(temp_spain, results)
@@ -119,11 +121,21 @@ info <- get_stations_info_from('ria', ria_options) # get the geometry info
 info <- select(info, c(station_name, geometry)) # keep only the geometry and name columns of the data
 info <- info %>% distinct(station_name, .keep_all = TRUE) # get rid of duplicate stations
 
-alldata <- left_join(temp_spain, info, by = "station_name") # add the geometry info as a new column to the temp data, matching station names with geometry
+temp_spain <- left_join(temp_spain, info, by = "station_name") # add the geometry info as a new column to the temp data, matching station names with geometry
 
-for(i in 1:length(alldata$geometry)){
-  alldata$geometry[i] <- DMS2decimal(alldata$geometry[i])
+for(i in 1:length(temp_spain$geometry)){
+  temp_spain$geometry[i] <- DMS2decimal(temp_spain$geometry[i])
 }
+
+# now get all data since 2001 and get all April values per station
+
+ria_options2 <- ria_options(resolution = 'monthly', start_date = as.Date('2001-04-01'), end_date = as.Date('2022-05-01'))
+meteo_ria_long <- get_meteo_from('ria', ria_options2)
+meteoSubsetApril <- meteo_ria_long[grep("04-01", meteo_ria_long$timestamp), ] # select only the observations from April
+
+# TODO 
+a <- aggregate(meteoSubsetApril$mean_temperature, by = list(meteoSubsetApril$station_name), FUN = mean) # this is the mean for April per station
+
 
 ### plotting section ----------------------------------
 library(ggplot2)
@@ -133,12 +145,15 @@ library(cowplot)
 # plot the stations with Andalucia
 ggplot() + geom_sf(data = andalucia$geometry) + geom_sf(data = meteo_ria$geometry) + ggtitle("Meteorological stations in Andalucia, Spain")
 
+# plot single station for checking which region it is in
+ggplot() + geom_sf(data = andalucia$geometry) + geom_sf(data = meteo_ria$geometry[1]) # so this point is definitely in cordoba region, need to find function that returns this
+
 # use one of four pre-prepared colour palettes for the uncertainty plotting
 cmBivPal <- build_palette(name = "GreenBlue")
 view(cmBivPal)
 
 # below, read.uv creates a df that is usable to build a map with the function after
-temperature <- read.uv(data = alldata, estimate = "mean_temp", error = "temp_moe")
+temperature <- read.uv(data = temp_spain, estimate = "mean_temp", error = "temp_moe")
 
 # convert geo info to sf object
 geodata <- st_as_sf(get_stations_info_from('ria', ria_options))
@@ -166,6 +181,21 @@ legend <- view(tempBivKey)
 plot_grid(map, legend, labels = NULL, scale = c(1, 0.5)) 
 
 # intersecting the polygons with the stations
-View(st_contains(unique(st_as_sf(meteo_ria$geometry)), st_as_sf(andalucia$geometry)))
+pol = andalucia$geometry 
+pts = geodata$geometry
+ints = st_intersects(pol, pts) # this returns a list with the geometries and then the number of the points that lie in this geometry
 
-a <- aggregate(meteo_ria$mean_temperature, by = andalucia, FUN = mean)
+meanpolytemps <- c()
+for (i in 1:length(ints)) {
+  polytemp <- c()
+  for (point in ints[[i]]) {
+    temp <- temp_spain$mean_temp[point] 
+    polytemp <- c(polytemp, temp) # these are the mean temperatures of the stations that are in polygon 1
+  }
+  result <- mean(as.numeric(polytemp), na.rm = TRUE) # this is the value that we want to assign to the polygon in the end, the mean temperature of all the stations inside the polygon
+  meanpolytemps <- c(meanpolytemps, result)
+}
+
+andalucia$mean_temperature <- meanpolytemps
+
+ggplot(andalucia) + geom_sf(aes(fill = mean_temperature))
