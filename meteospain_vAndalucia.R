@@ -131,11 +131,11 @@ for(i in 1:length(temp_spain$geometry)){
 
 ria_options2 <- ria_options(resolution = 'monthly', start_date = as.Date('2001-04-01'), end_date = as.Date('2022-05-01'))
 meteo_ria_long <- get_meteo_from('ria', ria_options2) # this takes a few mins to run
-meteoSubsetApril <- meteo_ria_long[grep("04-01", meteo_ria_long$timestamp), ] # select only the observations from April
+meteoSubsetApril <- meteo_ria_long[grep(".....04-01", meteo_ria_long$timestamp), ] # select only the observations from April (the dots are so it only looks at the month and not the year)
 
 # TODO 
 a <- aggregate(meteoSubsetApril$mean_temperature, by = list(meteoSubsetApril$station_name), FUN = mean) # this is the mean for April per station
-
+colnames(a) <- c("station", "yearly_mean_temp")
 
 ### plotting section ----------------------------------
 library(ggplot2)
@@ -187,7 +187,7 @@ for (i in 1:length(ints)) {
   polytemp <- c()
   for (point in ints[[i]]) {
     temp <- temp_spain$mean_temp[point] 
-    polytemp <- c(polytemp, temp) # these are the mean temperatures of the stations that are in polygon 1
+    polytemp <- c(polytemp, temp) # these are the mean temperatures of the stations that are in polygon i
   }
   result <- mean(as.numeric(polytemp), na.rm = TRUE) # this is the value that we want to assign to the polygon in the end, the mean temperature of all the stations inside the polygon
   meanpolytemps <- c(meanpolytemps, result)
@@ -196,3 +196,7 @@ for (i in 1:length(ints)) {
 andalucia$mean_temperature <- meanpolytemps
 
 ggplot(andalucia) + geom_sf(aes(fill = mean_temperature))
+# 
+# temperaturePolygon <- read.uv(data = temp_spain, estimate = "mean_temp", error = "temp_moe")
+# tempBivMapPolygon <- build_bmap(data = temperature, geoData = buffered_geodata, id = "station_name", palette = "CyanMagenta")
+# map <- view(tempBivMapPolygon)
