@@ -130,7 +130,7 @@ for(i in 1:length(temp_spain$geometry)){
 # now get all data since 2001 and get all April values per station
 
 ria_options2 <- ria_options(resolution = 'monthly', start_date = as.Date('2001-04-01'), end_date = as.Date('2022-05-01'))
-meteo_ria_long <- get_meteo_from('ria', ria_options2)
+meteo_ria_long <- get_meteo_from('ria', ria_options2) # this takes a few mins to run
 meteoSubsetApril <- meteo_ria_long[grep("04-01", meteo_ria_long$timestamp), ] # select only the observations from April
 
 # TODO 
@@ -163,14 +163,11 @@ for(i in 1:length(geodata$geometry)){
   geodata$geometry[i] <- DMS2decimal(geodata$geometry[i])
 }
 
-# create buffer around the points so they can be used as spatial polygons
-geodata <- st_buffer(geodata, dist = 3000)
-
-# convert into S4 object
-geodata <- as_Spatial(geodata)
+# create buffer around the points so they can be used as spatial polygons, and then convert into S4 object as required for plotting with vizumap
+buffered_geodata <- st_buffer(geodata, dist = 3000) |> as_Spatial()
 
 # create map using the biv color palette and the poverty df
-tempBivMap <- build_bmap(data = temperature, geoData = geodata, id = "station_name", palette = "CyanMagenta")
+tempBivMap <- build_bmap(data = temperature, geoData = buffered_geodata, id = "station_name", palette = "CyanMagenta")
 map <- view(tempBivMap) + geom_sf(data = andalucia$geometry, color=alpha("black", 0.7), fill = NA) + ggtitle("Meteorological stations in Andalucia, Spain")
 
 # create legend
