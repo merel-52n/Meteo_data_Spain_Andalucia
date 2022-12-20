@@ -118,8 +118,7 @@ colnames(temp_spain) <- c("station_name", "mean_temp", "temp_moe")
 
 # now adding the geometry info to the data
 info <- get_stations_info_from('ria', ria_options) # get the geometry info
-info <- select(info, c(station_name, geometry)) # keep only the geometry and name columns of the data
-info <- info %>% distinct(station_name, .keep_all = TRUE) # get rid of duplicate stations
+info <- select(info, c(station_id, station_name, geometry)) # keep only the geometry and name columns of the data
 
 temp_spain <- left_join(temp_spain, info, by = "station_name") # add the geometry info as a new column to the temp data, matching station names with geometry
 
@@ -134,8 +133,7 @@ meteo_ria_long <- get_meteo_from('ria', ria_options2) # this takes a few mins to
 meteoSubsetApril <- meteo_ria_long[grep(".....04-01", meteo_ria_long$timestamp), ] # select only the observations from April (the dots are so it only looks at the month and not the year)
 
 # TODO 
-a <- aggregate(meteoSubsetApril$mean_temperature, by = list(meteoSubsetApril$station_name), FUN = mean) # this is the mean for April per station
-colnames(a) <- c("station", "yearly_mean_temp")
+a <- aggregate(mean_temperature~station_id+station_name, meteoSubsetApril, FUN = mean) # this is the mean for April per station
 
 ### plotting section ----------------------------------
 library(ggplot2)
@@ -195,8 +193,27 @@ for (i in 1:length(ints)) {
 
 andalucia$mean_temperature <- meanpolytemps
 
-ggplot(andalucia) + geom_sf(aes(fill = mean_temperature))
-# 
-# temperaturePolygon <- read.uv(data = temp_spain, estimate = "mean_temp", error = "temp_moe")
-# tempBivMapPolygon <- build_bmap(data = temperature, geoData = buffered_geodata, id = "station_name", palette = "CyanMagenta")
-# map <- view(tempBivMapPolygon)
+p1 <- ggplot(andalucia) + geom_sf(aes(fill = mean_temperature)) + ggtitle("Mean temperatures in Andalucia, April 2022")
+
+# now using yearly April means to assign values to polygons
+diff <- setdiff(geodata$station_id, a$station_id) # check which station ids do not match. df 'a' contains available data per station id
+geodata2 <- geodata[ ! geodata$station_id %in% diff, ] # delete rows with station ids that are not in the available meteo data
+geodata2 <- left_join(geodata2, a) # this adds the mean temperature from all Aprils since 2001 from the 'a' (aggregated) df which was composed in lines above
+
+# now we can create a new df with the mean temps per year for each polygon
+yearmeanpolytemps <- c()
+for (i in 1:length(ints)) {
+  polytemp <- c()
+  for (point in ints[[i]]) {
+    temp <- geodata2$mean_temperature[point] 
+    polytemp <- c(polytemp, temp) # these are the mean temperatures of the stations that are in polygon i
+  }
+  result <- mean(as.numeric(polytemp), na.rm = TRUE) # this is the value that we want to assign to the polygon in the end, the mean temperature of all the stations inside the polygon
+  yearmeanpolytemps <- c(yearmeanpolytemps, result)
+}
+
+andalucia$yearly_mean_temp <- yearmeanpolytemps
+
+p2 <- ggplot(andalucia) + geom_sf(aes(fill = yearly_mean_temp)) + ggtitle("Historic mean temperatures in Andalucia, April 2001-2022")
+
+plot_grid(p1, p2)
